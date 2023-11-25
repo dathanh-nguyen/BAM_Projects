@@ -1,0 +1,185 @@
+-- Task 5 - Creating and importing tables 
+CREATE TABLE Crime_type
+	(iucr TEXT PRIMARY KEY NOT NULL UNIQUE,
+	primarytype TEXT NOT NULL,
+	description TEXT NOT NULL,
+	index_crime INT NOT NULL);
+
+
+CREATE TABLE Location 
+	(LocationID INTEGER PRIMARY KEY AUTOINCREMENT,
+	district INT NOT NULL,
+	latitude REAL NOT NULL,
+	longitude REAL NOT NULL);
+	
+
+CREATE TABLE Cases
+	(CrimeID INT PRIMARY KEY NOT NULL UNIQUE,
+	iucr TEXT NOT NULL, --we want also to make sure this is never NULL
+	LocationID INT NOT NULL,
+	Date TEXT NOT NULL,
+	arrest INT NOT NULL,
+	FOREIGN KEY(iucr) REFERENCES Crime_type (iucr),
+	FOREIGN KEY(LocationID) REFERENCES Location (LocationID));
+
+
+INSERT INTO Crime_type 
+	(iucr, primarytype, description, index_crime)
+	SELECT DISTINCT iucr, primarytype, description, index_crime
+	FROM tidycrimes_fin;
+
+
+INSERT INTO Location 
+	(district, latitude, longitude)
+	SELECT DISTINCT district, latitude, longitude
+	FROM tidycrimes_fin;
+
+
+INSERT INTO Cases
+	(CrimeID, iucr, LocationID, Date, arrest)
+	SELECT DISTINCT CrimeID, iucr, LocationID, Date, arrest
+	FROM tidycrimes_fin
+	JOIN Location ON tidycrimes_fin.district  = Location.district AND tidycrimes_fin.latitude = Location.latitude AND tidycrimes_fin.longitude = Location.longitude;
+
+
+
+---Task 6 - Question 1
+--Creating a simple table based on distrit and amounts of index crimes
+SELECT DISTINCT
+	district,
+	Count(Crime_type.index_crime) as "Total number of index crimes"
+FROM Location
+JOIN Cases on Location.LocationID = Cases.LocationID
+JOIN Crime_type on Cases.iucr = Crime_type.iucr
+WHERE Crime_type.index_crime = 1
+GROUP BY district
+HAVING "Total number of index crimes" > 15000
+ORDER BY "Total number of index crimes" DESC
+
+--Creating a view of the complete table separately so to not have to use JOIN every time
+CREATE VIEW complete_table AS SELECT ca.CrimeID, ca.Date, ca.iucr, ct.primarytype, ct.description, ca.arrest, l.district, l.latitude, l.longitude, ct.index_crime
+FROM Cases ca
+JOIN Location l ON ca.LocationID = l.LocationID 
+JOIN Crime_type ct ON ct.iucr = ca.iucr;
+
+SELECT * FROM complete_table
+
+--Seeing how the districts compare when it comes to index crimes which did not lead to an arrest 
+SELECT DISTINCT RANK () 
+OVER (ORDER BY Count(index_crime)*(1-ROUND(avg(arrest), 2)) DESC) "Ranking - non-arrest",
+	district,
+	Count(index_crime) as "Total number of index crimes",
+	1-ROUND(avg(arrest), 2) AS "Unsolved/non-arrest rate"
+FROM complete_table
+WHERE index_crime = 1
+GROUP BY district
+ORDER BY "Ranking district - non-arrest" ASC
+LIMIT 7
+
+
+---Task 6 - Question 2
+SELECT strftime('%Y', Cases.Date) as "Crime Year",
+       strftime('%m', Cases.Date) as "Crime Month",
+       count(Cases.Date) as "Total amount of crimes against the police"
+FROM Cases
+JOIN Crime_type ON Cases.iucr = Crime_type.iucr
+WHERE Crime_type.primarytype LIKE '%OFFICER%' OR Crime_type.description LIKE '%OFFICER%'
+GROUP BY "Crime Year"
+
+--Query to see crimes against officers on Date
+SELECT Date, count(Date) as "Total amount of crimes against officers"
+FROM Cases
+JOIN Crime_type ON Cases.iucr = Crime_type.iucr
+WHERE Crime_type.primarytype LIKE '%OFFICER%' OR Crime_type.description LIKE '%OFFICER%'
+GROUP BY Date 
+ORDER BY Date
+
+--Create VIEW of corona crimes to create visualization
+CREATE VIEW crimes_corona AS SELECT ca.CrimeID, ca.iucr, ca.Date, ct.primarytype, ct.description 
+FROM Cases ca
+JOIN Crime_type ct ON ca.iucr = ct.iucr
+WHERE Date BETWEEN '2020-01-01' AND '2021-12-31' AND ct.primarytype LIKE '%OFFICER%' OR ct.description LIKE '%OFFICER%' AND Date BETWEEN '2020-01-01' AND '2020-12-31';
+
+SELECT * FROM crimes_corona
+---Task 6 - Question 3
+CREATE INDEX idx_arrests ON Cases (arrest);
+
+PRAGMA index_list (Cases)
+
+
+SELECT l.district, count(ca.arrest) AS "Total arrests"
+FROM Cases ca
+JOIN Location l ON ca.LocationID = l.LocationID
+WHERE arrest = 1
+GROUP BY l.district
+ORDER BY "Total arrests" ASC
+LIMIT 10 
+
+/*
+EXPLAIN QUERY PLAN SELECT l.district, count(ca.arrest) AS "Total arrests" -- check for usage of the index
+FROM Cases ca
+JOIN Location l ON ca.LocationID = l.LocationID
+WHERE arrest = 1
+GROUP BY l.district
+ORDER BY "Total arrests" DESC
+LIMIT 10 
+*/
+--Ranking by rate and total arrests
+SELECT DISTINCT RANK () 
+OVER (ORDER BY avg(ca.arrest) DESC) "Ranking - rate",
+RANK () 
+OVER (ORDER BY count(ca.arrest) DESC) "Ranking - total",
+l.district, ROUND(avg(ca.arrest),3) AS "Arrest rate"
+FROM Cases ca
+JOIN Location l ON ca.LocationID = l.LocationID
+GROUP BY l.district
+ORDER BY "Arrest rate" ASC
+LIMIT 10 
+
+---Task 6 - Question 4
+SELECT ca.CrimeID, l.latitude, l.longitude, ct.primarytype, ct.description 
+FROM Crime_type ct
+JOIN Cases ca ON ca.iucr = ct.iucr
+JOIN Location l ON ca.LocationID = l.LocationID
+WHERE ct.primarytype = "BURGLARY";
+
+-- Creating the dataset to be used for area visualization
+CREATE VIEW area_data AS SELECT latitude, longitude, primarytype, description 
+FROM complete_table
+WHERE primarytype = "BURGLARY" AND arrest = 0;
+
+SELECT * FROM area_data;
+
+-- unsolved burglaries per district 
+SELECT DISTINCT district, count(arrest) AS "Unsolved burglaries"
+FROM complete_table
+WHERE primarytype = "BURGLARY" AND arrest = 0 AND strftime('%Y', Date) IN ('2021')
+GROUP BY district
+ORDER BY "Unsolved burglaries" DESC
+
+---Task 6 - Trigger
+--Creating table CrimeLog
+CREATE TABLE "CrimeLog" 
+		("LogID" INTEGER PRIMARY KEY AUTOINCREMENT,
+		"CrimeID" INT,
+		"Date/time" TEXT, 
+		"Operation" TEXT);
+
+--Creating a trigger that activates when someone adds a new row
+CREATE TRIGGER NewCase BEFORE INSERT ON Cases
+BEGIN
+ INSERT INTO CrimeLog (CrimeID, "Date/time", Operation) VALUES (NEW.CrimeID, datetime(), 'INSERT NEW CASE');
+ END;
+
+ --Testing out the trigger - works, CrimeLog gets populated
+INSERT INTO Cases (CrimeID, iucr, LocationID, Date, arrest) VALUES (1000000, "1110", 10000, "2022-10-2", 0);
+
+--Trigger for deleting Cases
+CREATE TRIGGER DeleteCrime BEFORE DELETE ON Cases
+	BEGIN -- this is the statement of what the trigger should do
+	INSERT INTO CrimeLog (CrimeID, "Date/time", Operation) VALUES (OLD.CrimeID, datetime(), 'CASE DELETED'); 
+	END;
+	
+--Testing out the trigger 
+DELETE FROM Cases WHERE CrimeID = 1000000;
+

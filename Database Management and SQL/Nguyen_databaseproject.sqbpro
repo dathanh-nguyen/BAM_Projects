@@ -1,0 +1,172 @@
+<?xml version="1.0" encoding="UTF-8"?><sqlb_project><db path="C:/Users/tnguyen10/Private/School/Block 1/DME/Individual assignment/SQL/Nguyen_532618tn_databaseproject.db" readonly="0" foreign_keys="1" case_sensitive_like="0" temp_store="0" wal_autocheckpoint="1000" synchronous="2"/><attached/><window><main_tabs open="structure browser pragmas query" current="3"/></window><tab_structure><column_width id="0" width="300"/><column_width id="1" width="0"/><column_width id="2" width="100"/><column_width id="3" width="1955"/><column_width id="4" width="0"/><expanded_item id="0" parent="1"/><expanded_item id="1" parent="1"/><expanded_item id="2" parent="1"/><expanded_item id="3" parent="1"/></tab_structure><tab_browse><current_table name="4,10:mainCrime_type"/><default_encoding codec=""/><browse_table_settings><table schema="main" name="Cases" show_row_id="0" encoding="" plot_x_axis="" unlock_view_pk="_rowid_"><sort><column index="1" mode="1"/></sort><column_widths><column index="1" value="58"/><column index="2" value="40"/><column index="3" value="77"/><column index="4" value="73"/><column index="5" value="49"/></column_widths><filter_values/><conditional_formats/><row_id_formats/><display_formats/><hidden_columns/><plot_y_axes/><global_filter/></table><table schema="main" name="CrimeLog" show_row_id="0" encoding="" plot_x_axis="" unlock_view_pk="_rowid_"><sort/><column_widths><column index="1" value="45"/><column index="2" value="58"/><column index="3" value="129"/><column index="4" value="116"/></column_widths><filter_values/><conditional_formats/><row_id_formats/><display_formats/><hidden_columns/><plot_y_axes/><global_filter/></table><table schema="main" name="Crime_type" show_row_id="0" encoding="" plot_x_axis="" unlock_view_pk="_rowid_"><sort><column index="1" mode="0"/></sort><column_widths><column index="1" value="40"/><column index="2" value="239"/><column index="3" value="300"/><column index="4" value="85"/></column_widths><filter_values><column index="4" value="1"/></filter_values><conditional_formats/><row_id_formats/><display_formats/><hidden_columns/><plot_y_axes/><global_filter/></table><table schema="main" name="Location" show_row_id="0" encoding="" plot_x_axis="" unlock_view_pk="_rowid_"><sort/><column_widths><column index="1" value="77"/><column index="2" value="54"/><column index="3" value="116"/><column index="4" value="121"/></column_widths><filter_values/><conditional_formats/><row_id_formats/><display_formats/><hidden_columns/><plot_y_axes/><global_filter/></table><table schema="main" name="complete_table" show_row_id="0" encoding="" plot_x_axis="" unlock_view_pk="_rowid_"><sort/><column_widths/><filter_values/><conditional_formats/><row_id_formats/><display_formats/><hidden_columns/><plot_y_axes/><global_filter/></table><table schema="main" name="crimes_corona" show_row_id="0" encoding="" plot_x_axis="" unlock_view_pk="_rowid_"><sort/><column_widths><column index="1" value="60"/><column index="2" value="60"/><column index="3" value="73"/><column index="4" value="228"/><column index="5" value="300"/></column_widths><filter_values/><conditional_formats/><row_id_formats/><display_formats/><hidden_columns/><plot_y_axes/><global_filter/></table><table schema="main" name="tidycrimes_fin" show_row_id="0" encoding="" plot_x_axis="" unlock_view_pk="_rowid_"><sort/><column_widths><column index="1" value="58"/><column index="2" value="73"/><column index="3" value="40"/><column index="4" value="228"/><column index="5" value="300"/><column index="6" value="49"/><column index="7" value="54"/><column index="8" value="116"/><column index="9" value="121"/><column index="10" value="85"/></column_widths><filter_values/><conditional_formats/><row_id_formats/><display_formats/><hidden_columns/><plot_y_axes/><global_filter/></table></browse_table_settings></tab_browse><tab_sql><sql name="Crime type">--Creating a Crime_type table
+CREATE TABLE Crime_type
+	(iucr TEXT PRIMARY KEY NOT NULL UNIQUE,
+	primarytype TEXT NOT NULL,
+	description TEXT NOT NULL,
+	index_crime INT NOT NULL);
+
+--Inserting values from the imported table
+INSERT INTO Crime_type 
+	(iucr, primarytype, description, index_crime)
+	SELECT DISTINCT iucr, primarytype, description, index_crime
+	FROM tidycrimes_fin;
+
+
+	</sql><sql name="Location">CREATE TABLE Location 
+	(LocationID INTEGER PRIMARY KEY AUTOINCREMENT,
+	district INT NOT NULL,
+	latitude REAL NOT NULL,
+	longitude REAL NOT NULL);
+	
+	
+INSERT INTO Location 
+	(district, latitude, longitude)
+	SELECT DISTINCT district, latitude, longitude
+	FROM tidycrimes_fin;
+
+</sql><sql name="Cases">CREATE TABLE Cases
+	(CrimeID INT PRIMARY KEY NOT NULL UNIQUE,
+	iucr TEXT NOT NULL, --we want also to make sure this is never NULL
+	LocationID INT NOT NULL,
+	Date TEXT NOT NULL,
+	arrest INT NOT NULL,
+	FOREIGN KEY(iucr) REFERENCES Crime_type (iucr),
+	FOREIGN KEY(LocationID) REFERENCES Location (LocationID));
+	
+INSERT INTO Cases
+	(CrimeID, iucr, LocationID, Date, arrest)
+	SELECT DISTINCT CrimeID, iucr, LocationID, Date, arrest
+	FROM tidycrimes_fin
+	JOIN Location ON tidycrimes_fin.district  = Location.district AND tidycrimes_fin.latitude = Location.latitude AND tidycrimes_fin.longitude = Location.longitude;
+</sql><sql name="Question 1">SELECT strftime('%Y', Cases.Date) as &quot;Crime Year&quot;,
+       strftime('%m', Cases.Date) as &quot;Crime Month&quot;,
+       count(Cases.Date) as &quot;Total amount of crimes against the police&quot;
+FROM Cases
+JOIN Crime_type ON Cases.iucr = Crime_type.iucr
+WHERE Crime_type.primarytype LIKE '%OFFICER%' OR Crime_type.description LIKE '%OFFICER%'
+GROUP BY &quot;Crime Year&quot;
+--Query to see crimes against officers on Date
+SELECT Date, count(Date) as &quot;Total amount of crimes against officers&quot;
+FROM Cases
+JOIN Crime_type ON Cases.iucr = Crime_type.iucr
+WHERE Crime_type.primarytype LIKE '%OFFICER%' OR Crime_type.description LIKE '%OFFICER%'
+GROUP BY Date 
+ORDER BY Date
+--Create VIEW of corona crimes to create visualization
+CREATE VIEW crimes_corona AS SELECT ca.CrimeID, ca.iucr, ca.Date, ct.primarytype, ct.description 
+FROM Cases ca
+JOIN Crime_type ct ON ca.iucr = ct.iucr
+WHERE Date BETWEEN '2020-01-01' AND '2021-12-31' AND ct.primarytype LIKE '%OFFICER%' OR ct.description LIKE '%OFFICER%' AND Date BETWEEN '2020-01-01' AND '2020-12-31';
+
+SELECT * FROM crimes_corona
+
+
+
+
+
+</sql><sql name="Question 2">--Creating a simple table based on distrit and amounts of index crimes
+SELECT DISTINCT
+	district,
+	Count(Crime_type.index_crime) as &quot;Total number of index crimes&quot;
+FROM Location
+JOIN Cases on Location.LocationID = Cases.LocationID
+JOIN Crime_type on Cases.iucr = Crime_type.iucr
+WHERE Crime_type.index_crime = 1
+GROUP BY district
+HAVING &quot;Total number of index crimes&quot; &gt; 15000
+ORDER BY &quot;Total number of index crimes&quot; DESC
+
+--Creating a view of the complete table separately so to not have to use JOIN every time
+CREATE VIEW complete_table AS SELECT ca.CrimeID, ca.Date, ca.iucr, ct.primarytype, ct.description, ca.arrest, l.district, l.latitude, l.longitude, ct.index_crime
+FROM Cases ca
+JOIN Location l ON ca.LocationID = l.LocationID 
+JOIN Crime_type ct ON ct.iucr = ca.iucr;
+
+SELECT * FROM complete_table
+
+--Seeing how the districts compare when it comes to index crimes which did not lead to an arrest 
+SELECT DISTINCT RANK () 
+OVER (ORDER BY Count(index_crime)*(1-ROUND(avg(arrest), 2)) DESC) &quot;Ranking - non-arrest&quot;,
+	district,
+	Count(index_crime) as &quot;Total number of index crimes&quot;,
+	1-ROUND(avg(arrest), 2) AS &quot;Unsolved/non-arrest rate&quot;
+FROM complete_table
+WHERE index_crime = 1
+GROUP BY district
+ORDER BY &quot;Ranking district - non-arrest&quot; ASC
+LIMIT 7
+</sql><sql name="Question 3">CREATE INDEX idx_arrests ON Cases (arrest);
+
+PRAGMA index_list (Cases)
+
+
+SELECT l.district, count(ca.arrest) AS &quot;Total arrests&quot;
+FROM Cases ca
+JOIN Location l ON ca.LocationID = l.LocationID
+WHERE arrest = 1
+GROUP BY l.district
+ORDER BY &quot;Total arrests&quot; ASC
+LIMIT 10 
+
+/*
+EXPLAIN QUERY PLAN SELECT l.district, count(ca.arrest) AS &quot;Total arrests&quot; -- check for usage of the index
+FROM Cases ca
+JOIN Location l ON ca.LocationID = l.LocationID
+WHERE arrest = 1
+GROUP BY l.district
+ORDER BY &quot;Total arrests&quot; DESC
+LIMIT 10 
+*/
+--Ranking by rate and total arrests
+SELECT DISTINCT RANK () 
+OVER (ORDER BY avg(ca.arrest) DESC) &quot;Ranking - rate&quot;,
+RANK () 
+OVER (ORDER BY count(ca.arrest) DESC) &quot;Ranking - total&quot;,
+l.district, ROUND(avg(ca.arrest),3) AS &quot;Arrest rate&quot;
+FROM Cases ca
+JOIN Location l ON ca.LocationID = l.LocationID
+GROUP BY l.district
+ORDER BY &quot;Arrest rate&quot; ASC
+LIMIT 10 </sql><sql name="Question 4">SELECT ca.CrimeID, l.latitude, l.longitude, ct.primarytype, ct.description 
+FROM Crime_type ct
+JOIN Cases ca ON ca.iucr = ct.iucr
+JOIN Location l ON ca.LocationID = l.LocationID
+WHERE ct.primarytype = &quot;BURGLARY&quot;;
+
+-- Creating the dataset to be used for area visualization
+CREATE VIEW area_data AS SELECT latitude, longitude, primarytype, description 
+FROM complete_table
+WHERE primarytype = &quot;BURGLARY&quot; AND arrest = 0;
+
+SELECT * FROM area_data;
+
+-- unsolved burglaries per district 
+SELECT DISTINCT district, count(arrest) AS &quot;Unsolved burglaries&quot;
+FROM complete_table
+WHERE primarytype = &quot;BURGLARY&quot; AND arrest = 0 AND strftime('%Y', Date) IN ('2021')
+GROUP BY district
+ORDER BY &quot;Unsolved burglaries&quot; DESC</sql><sql name="Trigger">--Creating table CrimeLog
+CREATE TABLE &quot;CrimeLog&quot; 
+		(&quot;LogID&quot; INTEGER PRIMARY KEY AUTOINCREMENT,
+		&quot;CrimeID&quot; INT,
+		&quot;Date/time&quot; TEXT, 
+		&quot;Operation&quot; TEXT);
+
+--Creating a trigger that activates when someone adds a new row
+CREATE TRIGGER NewCase BEFORE INSERT ON Cases
+BEGIN
+ INSERT INTO CrimeLog (CrimeID, &quot;Date/time&quot;, Operation) VALUES (NEW.CrimeID, datetime(), 'INSERT NEW CASE');
+ END;
+
+ --Testing out the trigger - works, CrimeLog gets populated
+INSERT INTO Cases (CrimeID, iucr, LocationID, Date, arrest) VALUES (1000000, &quot;1110&quot;, 10000, &quot;2022-10-2&quot;, 0);
+
+--Trigger for deleting Cases
+CREATE TRIGGER DeleteCrime BEFORE DELETE ON Cases
+	BEGIN -- this is the statement of what the trigger should do
+	INSERT INTO CrimeLog (CrimeID, &quot;Date/time&quot;, Operation) VALUES (OLD.CrimeID, datetime(), 'CASE DELETED'); 
+	END;
+	
+--Testing out the trigger 
+DELETE FROM Cases WHERE CrimeID = 1000000;
+</sql><current_tab id="7"/></tab_sql></sqlb_project>
